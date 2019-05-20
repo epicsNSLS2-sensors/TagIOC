@@ -25,6 +25,7 @@
 
 #include "tag.h"
 
+// object for bluetooth connection to device
 gatt_connection_t *gatt_connection = 0;
 pthread_mutex_t connlock = PTHREAD_MUTEX_INITIALIZER;
 // current 2-byte value of motion configuration UUID
@@ -173,21 +174,6 @@ static void writePV_callback(const uuid_t *uuidObject, const uint8_t *data, size
 			printf("Invalid CHOICE for %s: %d\n", pv->name, choice);
 		memcpy(pv->vala, &x, sizeof(float));
 	}
-
-	// for (int i=0; i < len; i++) {
-	// 	printf("%d ", data[i]);
-	// }
-	// printf("\n");
-
-	// uint8_t button = data[0];
-	// if (button == 0)
-	// 	printf("none\n");
-	// else if (button == 1)
-	// 	printf("left\n");
-	// else if (button == 2)
-	// 	printf("power\n");
-	// else
-	// 	printf("both\n");
 	
 	scanOnce(pv);
 }
@@ -242,14 +228,14 @@ static void *notificationListener(void *vargp) {
 	NotifyArgs *args = (NotifyArgs *) vargp;
 	
 	// enable data collection
-	// enable UUID = sensor UUID + 1
+	// enable UUID = data UUID + 1
 	char input[40];
 	int x = atoi(args->uuid_str);
 	x += 1;
 	snprintf(input, sizeof(input), "%d", x);
-	gatt_connection_t *conn = get_connection();
 	uuid_t enable = sensorTagUUID(input);
 	pthread_mutex_lock(&connlock);
+	gatt_connection_t *conn = get_connection();
 
 	int ret;
 	// motion sensors are enabled individually
