@@ -1,7 +1,11 @@
 # TagIOC
-An EPICS IOC for the CC1350 SensorTag by Texas Instruments using Bluetooth low energy
+An EPICS IOC for the Texas Instruments CC1350 SensorTag using Bluetooth low energy
 
 Supported sensors:
-- Temperature-humidity
-- Temperature-pressure
+- Humidity-temperature
+- Pressure-temperature
 - Light
+- Preliminary support:
+	- Accelerometer
+	- Gyroscope
+	- Magnetometer

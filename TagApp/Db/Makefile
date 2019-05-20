@@ -11,9 +11,7 @@ include $(TOP)/configure/CONFIG
 # Create and install (or just install)
 # databases, templates, substitutions like this
 #DB += asynRecord.db
-DB += notifyNumber.db
-DB += notifyString.db
-DB += readwrite.db
+DB += sensors.db
 #----------------------------------------------------
 # If <anyname>.db template is not named <anyname>*.template add
 # <anyname>_TEMPLATE = <templatename>

@@ -21,8 +21,6 @@
 
 TEMPLATE_TOP=$(EPICS_BASE)/templates/makeBaseApp/top
 
-ASYN=/epics/support/asyn
-
 # EPICS_BASE usually appears last so other apps can override stuff:
 EPICS_BASE=/epics/epics-base-7-0-1-1
 

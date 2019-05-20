@@ -12,8 +12,8 @@ DBD += tag.dbd
 
 # tag.dbd will be made up from these files:
 tag_DBD += base.dbd
-tag_DBD += asyn.dbd
-tag_DBD += drvAsynIPPort.dbd
+#tag_DBD += asyn.dbd
+#tag_DBD += drvAsynIPPort.dbd
 tag_DBD += bluetooth.dbd
 
 # tag_registerRecordDeviceDriver.cpp derives from tag.dbd
@@ -25,7 +25,7 @@ tag_SRCS += bluetooth.c
 tag_SRCS_DEFAULT += bluetoothMain.cpp
 
 # Link in the code from the support library
-tag_LIBS += asyn
+#tag_LIBS += asyn
 
 # Finally link to the EPICS Base libraries
 tag_LIBS += $(EPICS_BASE_IOC_LIBS)

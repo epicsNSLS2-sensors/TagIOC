@@ -27,10 +27,14 @@
 
 gatt_connection_t *gatt_connection = 0;
 pthread_mutex_t connlock = PTHREAD_MUTEX_INITIALIZER;
+// current 2-byte value of motion configuration UUID
+uint8_t motion_config[2];
+pthread_mutex_t motionlock = PTHREAD_MUTEX_INITIALIZER;
 
 #define TEMP_HUMIDITY_UUID "21"
 #define TEMP_PRESSURE_UUID "41"
 #define LIGHT_UUID "71"
+#define MOTION_UUID "81"
 
 static void disconnect();
 
@@ -98,33 +102,37 @@ static void writePV_callback(const uuid_t *uuidObject, const uint8_t *data, size
 		int choice;
 		memcpy(&choice, pv->b, sizeof(int));
 		float x;
-		// temperature
+		// humidity
 		if (choice == 1) {
+			uint16_t raw = (data[2]) | (data[3] << 8);
+			raw &= ~0x0003;
+			x = ((double)raw / 65536)*100;
+		}		
+		// temperature
+		else if (choice == 2) {
 			uint16_t raw = (data[0]) | (data[1] << 8);
 			x = ((double)(int16_t)raw / 65536)*165 - 40;
 		}
-		// humidity
-		else if (choice == 2) {
-			uint16_t raw = (data[2]) | (data[3] << 8);
-			raw &= ~0x003;
-			x = ((double)raw / 65536)*100;
-		}		
 		memcpy(pv->vala, &x, sizeof(float));
 	}
 	else if (strcmp(uuid, TEMP_PRESSURE_UUID) == 0) {
 		int choice;
 		memcpy(&choice, pv->b, sizeof(int));
 		float x;
-		// temperature
-		if (choice == 1) {
-			uint32_t raw = (data[0]) | (data[1] << 8) | (data[2] << 16);
-			x = raw / 100.0f;
-		}
+		uint32_t raw;
 		// pressure
-		else if (choice == 2) {
-			uint32_t raw = (data[3]) | (data[4] << 8) | (data[5] << 16);
-			x = raw / 100.0f;
+		if (choice == 1) {
+			raw = (data[3]) | (data[4] << 8) | (data[5] << 16);
 		}
+		// temperature
+		else if (choice == 2) {
+			raw = (data[0]) | (data[1] << 8) | (data[2] << 16);
+		}
+		else {
+			printf("Invalid CHOICE for %s: %d\n", pv->name, choice);
+			return;
+		}
+		x = raw / 100.0f;
 		memcpy(pv->vala, &x, sizeof(float));
 	}
 	else if (strcmp(uuid, LIGHT_UUID) == 0) {
@@ -133,6 +141,36 @@ static void writePV_callback(const uuid_t *uuidObject, const uint8_t *data, size
 		uint16_t e = (raw & 0xF000) >> 12;
 		e = (e == 0) ? 1 : 2 << (e - 1);
 		float x = m * (0.01 * e);
+		memcpy(pv->vala, &x, sizeof(float));
+	}
+	else if (strcmp(uuid, MOTION_UUID) == 0) {
+		int choice;
+		memcpy(&choice, pv->b, sizeof(int));
+		float x;
+		int16_t raw;
+		// gyroscope
+		if (choice >= 1 && choice <= 3) {
+			// 1->4 2->2 3->0
+			choice = abs(choice-3) * 2;
+			raw = (data[choice]) | (data[choice+1] << 8);
+			x = (raw * 1.0) / (65536 / 500);
+		}
+		// accelerometer
+		else if (choice >= 4 && choice <= 6) {
+			// 4->10 5->8 6->6
+			choice = abs(choice-9) * 2;
+			raw = (data[choice]) | (data[choice+1] << 8);
+			x = (raw * 1.0) / (32768/2);
+		}
+		// magnetometer
+		else if (choice >= 7 && choice <= 9) {
+			// 7->12 8->14 9->16
+			choice = (choice-1)*2;
+			raw = (data[choice]) | (data[choice+1] << 8);
+			x = 1.0 * raw;
+		}
+		else 
+			printf("Invalid CHOICE for %s: %d\n", pv->name, choice);
 		memcpy(pv->vala, &x, sizeof(float));
 	}
 
@@ -204,21 +242,62 @@ static void *notificationListener(void *vargp) {
 	NotifyArgs *args = (NotifyArgs *) vargp;
 	
 	// enable data collection
+	// enable UUID = sensor UUID + 1
 	char input[40];
-	int x = atoi(args->pv->a);
+	int x = atoi(args->uuid_str);
 	x += 1;
 	snprintf(input, sizeof(input), "%d", x);
 	gatt_connection_t *conn = get_connection();
 	uuid_t enable = sensorTagUUID(input);
-	uint8_t values[1];
-	values[0] = 1;
-	gattlib_write_char_by_uuid(conn, &enable, values, sizeof(values));
+	pthread_mutex_lock(&connlock);
 
+	int ret;
+	// motion sensors are enabled individually
+	if (strcmp(args->uuid_str, MOTION_UUID) == 0) {
+		int choice;
+		memcpy(&choice, args->pv->b, sizeof(int));
+		if (choice > 7)
+			choice = 7;
+		pthread_mutex_lock(&motionlock);
+		uint8_t val = motion_config[0];
+		uint8_t old = val;
+		val |= (1 << (choice-1));
+		motion_config[0] = val;
+		ret = gattlib_write_char_by_uuid(conn, &enable, motion_config, sizeof(motion_config));
+		if (ret == -1) {
+			printf("Failed to activate pv %s\n", args->pv->name);
+			motion_config[0] = old;
+			pthread_mutex_unlock(&motionlock);
+			pthread_mutex_unlock(&connlock);
+			free(args);
+			return;
+		}
+
+		// scan motion every 100ms
+		uint8_t values[1];
+		values[0] = 0x0A;
+		uuid_t period = sensorTagUUID("83");
+		gattlib_write_char_by_uuid(conn, &period, values, sizeof(values));
+
+		pthread_mutex_unlock(&motionlock);
+	}
+	else {
+		uint8_t values[1];
+		values[0] = 1;
+		ret = gattlib_write_char_by_uuid(conn, &enable, values, sizeof(values));
+		if (ret == -1) {
+			printf("Faield to activate pv %s\n", args->pv->name);
+			free(args);
+			pthread_mutex_unlock(&connlock);
+			return;
+		}
+	}
 	// subscribe to UUID
 	gattlib_register_notification(conn, writePV_callback, args);
 	if (gattlib_notification_start(conn, &(args->uuid))) {
 		printf("ERROR: Failed to start notifications for UUID %s (pv %s)\n", args->uuid_str, args->pv->name);
 		free(args);
+		pthread_mutex_unlock(&connlock);
 		return;
 	}
 	printf("Starting notifications for pv %s\n", args->pv->name);
@@ -227,7 +306,6 @@ static void *notificationListener(void *vargp) {
 	NotificationNode *node = malloc(sizeof(NotificationNode));
 	node->uuid = &(args->uuid);
 	node->next = 0;
-	pthread_mutex_lock(&connlock);
 	if (firstNode == 0)
 		firstNode = node;
 	else {
