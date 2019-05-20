@@ -234,8 +234,8 @@ static void *notificationListener(void *vargp) {
 	x += 1;
 	snprintf(input, sizeof(input), "%d", x);
 	uuid_t enable = sensorTagUUID(input);
-	pthread_mutex_lock(&connlock);
 	gatt_connection_t *conn = get_connection();
+	pthread_mutex_lock(&connlock);
 
 	int ret;
 	// motion sensors are enabled individually
