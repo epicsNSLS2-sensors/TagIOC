@@ -8,14 +8,22 @@ Currently supported sensors:
 - Gyroscope
 - Accelerometer
 - Magnetometer
+- Buttons
+- Battery
 
 R1-0
 =================
 
+R1-0-2 5/22/19
+-----
+- Add support for buttons, preliminary support for battery
+- Change default motion scan period from 1 second to 100ms
+	- See macro MOTION_PERIOD in TagApp/src/bluetooth.c to configure
+
 R1-0-1 5/20/19
 -----
 - Add preliminary support for gyroscope, accelerometer, magnetometer
-	- Note: Default scan period for motion is 1 second, IOC sets it to 100ms. See line 283 in TagApp/src/bluetooth.c to configure
+- Protect device writes with concurrency locks
 - Add OPI screens
 
 R1-0-0 5/14/19

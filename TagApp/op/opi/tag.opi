@@ -60,7 +60,7 @@
     <foreground_color>
       <color red="192" green="192" blue="192" />
     </foreground_color>
-    <height>235</height>
+    <height>162</height>
     <name>LED</name>
     <off_color>
       <color red="0" green="100" blue="0" />
@@ -70,7 +70,7 @@
       <color red="0" green="255" blue="0" />
     </on_color>
     <on_label>ON</on_label>
-    <pv_name>XF:10IDB{THINGY:001}Button</pv_name>
+    <pv_name>XF:10IDB{TAG:001}Button1</pv_name>
     <pv_value />
     <rules />
     <scale_options>
@@ -85,10 +85,10 @@
 $(pv_value)</tooltip>
     <visible>true</visible>
     <widget_type>LED</widget_type>
-    <width>235</width>
+    <width>162</width>
     <wuid>1ea84650:16a12bb3e9a:-62dc</wuid>
-    <x>72</x>
-    <y>36</y>
+    <x>18</x>
+    <y>42</y>
   </widget>
   <widget typeId="org.csstudio.opibuilder.widgets.linkingContainer" version="1.0.0">
     <actions hook="false" hook_all="false" />
@@ -414,7 +414,7 @@ $(pv_value)</tooltip>
       <include_parent_macros>true</include_parent_macros>
       <Attr>Battery</Attr>
       <Sys>XF:10IDB</Sys>
-      <Dev>{THINGY:001}</Dev>
+      <Dev>{TAG:001}</Dev>
     </macros>
     <name>Linking Container_13</name>
     <opi_file>attribute.opi</opi_file>
@@ -432,7 +432,7 @@ $(pv_value)</tooltip>
     <width>361</width>
     <wuid>1ea84650:16a12bb3e9a:-627f</wuid>
     <x>9</x>
-    <y>294</y>
+    <y>210</y>
   </widget>
   <widget typeId="org.csstudio.opibuilder.widgets.xyGraph" version="1.0.0">
     <actions hook="false" hook_all="false" />
@@ -566,7 +566,7 @@ $(trace_0_y_pv_value)</tooltip>
     <trace_1_y_pv_value />
     <trace_2_anti_alias>true</trace_2_anti_alias>
     <trace_2_buffer_size>100</trace_2_buffer_size>
-    <trace_2_concatenate_data>false</trace_2_concatenate_data>
+    <trace_2_concatenate_data>true</trace_2_concatenate_data>
     <trace_2_line_width>1</trace_2_line_width>
     <trace_2_name>$(trace_2_y_pv)</trace_2_name>
     <trace_2_plot_mode>0</trace_2_plot_mode>
@@ -1178,5 +1178,63 @@ $(trace_0_y_pv_value)</tooltip>
     <wuid>7badf7a1:16a7f031227:-67c5</wuid>
     <x>1140</x>
     <y>132</y>
+  </widget>
+  <widget typeId="org.csstudio.opibuilder.widgets.LED" version="1.0.0">
+    <actions hook="false" hook_all="false" />
+    <alarm_pulsing>false</alarm_pulsing>
+    <backcolor_alarm_sensitive>false</backcolor_alarm_sensitive>
+    <background_color>
+      <color red="240" green="240" blue="240" />
+    </background_color>
+    <bit>-1</bit>
+    <border_alarm_sensitive>true</border_alarm_sensitive>
+    <border_color>
+      <color red="0" green="128" blue="255" />
+    </border_color>
+    <border_style>0</border_style>
+    <border_width>1</border_width>
+    <bulb_border>3</bulb_border>
+    <bulb_border_color>
+      <color red="150" green="150" blue="150" />
+    </bulb_border_color>
+    <data_type>0</data_type>
+    <effect_3d>true</effect_3d>
+    <enabled>true</enabled>
+    <font>
+      <opifont.name fontName="Sans" height="9" style="0" pixels="false">Default</opifont.name>
+    </font>
+    <forecolor_alarm_sensitive>false</forecolor_alarm_sensitive>
+    <foreground_color>
+      <color red="192" green="192" blue="192" />
+    </foreground_color>
+    <height>162</height>
+    <name>LED_1</name>
+    <off_color>
+      <color red="0" green="100" blue="0" />
+    </off_color>
+    <off_label>OFF</off_label>
+    <on_color>
+      <color red="0" green="255" blue="0" />
+    </on_color>
+    <on_label>ON</on_label>
+    <pv_name>XF:10IDB{TAG:001}Button2</pv_name>
+    <pv_value />
+    <rules />
+    <scale_options>
+      <width_scalable>true</width_scalable>
+      <height_scalable>true</height_scalable>
+      <keep_wh_ratio>true</keep_wh_ratio>
+    </scale_options>
+    <scripts />
+    <show_boolean_label>false</show_boolean_label>
+    <square_led>false</square_led>
+    <tooltip>$(pv_name)
+$(pv_value)</tooltip>
+    <visible>true</visible>
+    <widget_type>LED</widget_type>
+    <width>162</width>
+    <wuid>7badf7a1:16a7f031227:-64c0</wuid>
+    <x>208</x>
+    <y>42</y>
   </widget>
 </display>

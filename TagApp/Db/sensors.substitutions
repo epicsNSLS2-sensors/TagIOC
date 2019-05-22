@@ -17,10 +17,10 @@ pattern { Sys, 	Dev			  ,	Attr 		  , Units,	UUID,	CHOICE}
 # CHOICE field for UUID 41 (Pressure/Temperature):
 #	1 = Pressure
 #	2 = Temperature
-{ "XF:10IDB",	"{TAG:001}",	"Temperature1",	"C",		"21",	2}
 { "XF:10IDB",	"{TAG:001}",	"Humidity",		"%",		"21",	1}
-{ "XF:10IDB",	"{TAG:001}",	"Temperature2",	"C",		"41",	2}
+{ "XF:10IDB",	"{TAG:001}",	"Temperature1",	"C",		"21",	2}
 { "XF:10IDB",	"{TAG:001}",	"Pressure",		"hPa",		"41",	1}
+{ "XF:10IDB",	"{TAG:001}",	"Temperature2",	"C",		"41",	2}
 { "XF:10IDB",	"{TAG:001}",	"Light",		"lux",		"71",	0}
 
 # Motion
@@ -43,5 +43,19 @@ pattern { Sys, 	Dev			  ,	Attr 		  , Units,	UUID,	CHOICE}
 { "XF:10IDB",	"{TAG:001}",	"MagnetometerX","uT",		"81",	7}
 { "XF:10IDB",	"{TAG:001}",	"MagnetometerY","uT",		"81",	8}
 { "XF:10IDB",	"{TAG:001}",	"MagnetometerZ","uT",		"81",	9}
+
+# Interface
+# For some reason the button UUID is of a completely different format,
+# so set the UUID to "-1" to register the button.
+# CHOICE field for UUID -1 (Button):
+#	1 = User button
+#	2 = Power button
+#	3 = Both buttons
+{ "XF:10IDB",	"{TAG:001}",	"Button1",		"",			"-1",	1}
+{ "XF:10IDB",	"{TAG:001}",	"Button2",		"",			"-1",	2}
+
+# Generic battery UUID is 0x2a19 but EPICS doesnt like using hex numbers,
+# so use -2
+{ "XF:10IDB",	"{TAG:001}",	"Battery",		"%",		"-2",	0}
 
 }

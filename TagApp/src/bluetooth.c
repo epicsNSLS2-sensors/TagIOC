@@ -28,14 +28,24 @@
 // object for bluetooth connection to device
 gatt_connection_t *gatt_connection = 0;
 pthread_mutex_t connlock = PTHREAD_MUTEX_INITIALIZER;
+
 // current 2-byte value of motion configuration UUID
 uint8_t motion_config[2];
 pthread_mutex_t motionlock = PTHREAD_MUTEX_INITIALIZER;
+
+// period of motion sensor scanning in 10s of ms
+// minimum: 0x0A (100ms)
+// max: 0xFF (2.55s)
+#define MOTION_PERIOD 0x0A
+
+#define MOTION_PERIOD_UUID "83"
 
 #define TEMP_HUMIDITY_UUID "21"
 #define TEMP_PRESSURE_UUID "41"
 #define LIGHT_UUID "71"
 #define MOTION_UUID "81"
+#define BUTTON_UUID "-1"
+#define BATTERY_UUID "-2"
 
 static void disconnect();
 
@@ -44,6 +54,7 @@ typedef struct {
 	char uuid_str[35];
 	aSubRecord *pv;
 	uuid_t uuid;
+	int activate;
 } NotifyArgs;
 
 // linked list of subscribed UUIDs for cleanup
@@ -98,11 +109,11 @@ static void writePV_callback(const uuid_t *uuidObject, const uint8_t *data, size
 	NotifyArgs *args = (NotifyArgs *) user_data;
 	aSubRecord *pv = args->pv;
 	char *uuid = args->uuid_str;
+	int choice;
+	float x = -1;
 
 	if (strcmp(uuid, TEMP_HUMIDITY_UUID) == 0) {
-		int choice;
 		memcpy(&choice, pv->b, sizeof(int));
-		float x;
 		// humidity
 		if (choice == 1) {
 			uint16_t raw = (data[2]) | (data[3] << 8);
@@ -114,12 +125,13 @@ static void writePV_callback(const uuid_t *uuidObject, const uint8_t *data, size
 			uint16_t raw = (data[0]) | (data[1] << 8);
 			x = ((double)(int16_t)raw / 65536)*165 - 40;
 		}
-		memcpy(pv->vala, &x, sizeof(float));
+		else {
+			printf("Invaldi CHOICE for %s: %d\n", pv->name, choice);
+			return;
+		}
 	}
 	else if (strcmp(uuid, TEMP_PRESSURE_UUID) == 0) {
-		int choice;
 		memcpy(&choice, pv->b, sizeof(int));
-		float x;
 		uint32_t raw;
 		// pressure
 		if (choice == 1) {
@@ -134,20 +146,16 @@ static void writePV_callback(const uuid_t *uuidObject, const uint8_t *data, size
 			return;
 		}
 		x = raw / 100.0f;
-		memcpy(pv->vala, &x, sizeof(float));
 	}
 	else if (strcmp(uuid, LIGHT_UUID) == 0) {
 		uint16_t raw = (data[0]) | (data[1] << 8);
 		uint16_t m = raw & 0x0FFF;
 		uint16_t e = (raw & 0xF000) >> 12;
 		e = (e == 0) ? 1 : 2 << (e - 1);
-		float x = m * (0.01 * e);
-		memcpy(pv->vala, &x, sizeof(float));
+		x = m * (0.01 * e);
 	}
 	else if (strcmp(uuid, MOTION_UUID) == 0) {
-		int choice;
 		memcpy(&choice, pv->b, sizeof(int));
-		float x;
 		int16_t raw;
 		// gyroscope
 		if (choice >= 1 && choice <= 3) {
@@ -170,11 +178,24 @@ static void writePV_callback(const uuid_t *uuidObject, const uint8_t *data, size
 			raw = (data[choice]) | (data[choice+1] << 8);
 			x = 1.0 * raw;
 		}
-		else 
+		else {
 			printf("Invalid CHOICE for %s: %d\n", pv->name, choice);
-		memcpy(pv->vala, &x, sizeof(float));
+			return;
+		}
 	}
-	
+	else if (strcmp(uuid, BUTTON_UUID) == 0) {
+		int choice;
+		memcpy(&choice, pv->b, sizeof(int));
+		// button: 0=none, 1=user, 2=power, 3=both
+		if (data[0]==choice || data[0]==3)
+			x = 1;
+		else
+			x = 0;
+	}
+	else if (strcmp(uuid, BATTERY_UUID) == 0) {
+		x = data[0];
+	}
+	memcpy(pv->vala, &x, sizeof(float));
 	scanOnce(pv);
 }
 
@@ -226,56 +247,58 @@ static uuid_t sensorTagUUID(const char *id) {
 // thread function to begin listening for UUID notifications from device
 static void *notificationListener(void *vargp) {
 	NotifyArgs *args = (NotifyArgs *) vargp;
+	gatt_connection_t *conn = get_connection();
+	pthread_mutex_lock(&connlock);
 	
 	// enable data collection
 	// enable UUID = data UUID + 1
-	char input[40];
-	int x = atoi(args->uuid_str);
-	x += 1;
-	snprintf(input, sizeof(input), "%d", x);
-	uuid_t enable = sensorTagUUID(input);
-	gatt_connection_t *conn = get_connection();
-	pthread_mutex_lock(&connlock);
+	if (args->activate == 1) {
+		char input[40];
+		int x = atoi(args->uuid_str);
+		x += 1;
+		snprintf(input, sizeof(input), "%d", x);
+		uuid_t enable = sensorTagUUID(input);
 
-	int ret;
-	// motion sensors are enabled individually
-	if (strcmp(args->uuid_str, MOTION_UUID) == 0) {
-		int choice;
-		memcpy(&choice, args->pv->b, sizeof(int));
-		if (choice > 7)
-			choice = 7;
-		pthread_mutex_lock(&motionlock);
-		uint8_t val = motion_config[0];
-		uint8_t old = val;
-		val |= (1 << (choice-1));
-		motion_config[0] = val;
-		ret = gattlib_write_char_by_uuid(conn, &enable, motion_config, sizeof(motion_config));
-		if (ret == -1) {
-			printf("Failed to activate pv %s\n", args->pv->name);
-			motion_config[0] = old;
+		int ret;
+		// motion sensors are enabled individually
+		if (strcmp(args->uuid_str, MOTION_UUID) == 0) {
+			int choice;
+			memcpy(&choice, args->pv->b, sizeof(int));
+			if (choice > 7)
+				choice = 7;
+			pthread_mutex_lock(&motionlock);
+			uint8_t val = motion_config[0];
+			uint8_t old = val;
+			val |= (1 << (choice-1));
+			motion_config[0] = val;
+			ret = gattlib_write_char_by_uuid(conn, &enable, motion_config, sizeof(motion_config));
+			if (ret == -1) {
+				printf("Failed to activate pv %s\n", args->pv->name);
+				motion_config[0] = old;
+				pthread_mutex_unlock(&motionlock);
+				pthread_mutex_unlock(&connlock);
+				free(args);
+				return;
+			}
+
+			// change scan period from default of 1 second
+			uint8_t values[1];
+			values[0] = MOTION_PERIOD;
+			uuid_t period = sensorTagUUID(MOTION_PERIOD_UUID);
+			gattlib_write_char_by_uuid(conn, &period, values, sizeof(values));
+
 			pthread_mutex_unlock(&motionlock);
-			pthread_mutex_unlock(&connlock);
-			free(args);
-			return;
 		}
-
-		// scan motion every 100ms
-		uint8_t values[1];
-		values[0] = 0x0A;
-		uuid_t period = sensorTagUUID("83");
-		gattlib_write_char_by_uuid(conn, &period, values, sizeof(values));
-
-		pthread_mutex_unlock(&motionlock);
-	}
-	else {
-		uint8_t values[1];
-		values[0] = 1;
-		ret = gattlib_write_char_by_uuid(conn, &enable, values, sizeof(values));
-		if (ret == -1) {
-			printf("Faield to activate pv %s\n", args->pv->name);
-			free(args);
-			pthread_mutex_unlock(&connlock);
-			return;
+		else {
+			uint8_t values[1];
+			values[0] = 1;
+			ret = gattlib_write_char_by_uuid(conn, &enable, values, sizeof(values));
+			if (ret == -1) {
+				printf("Failed to activate pv %s\n", args->pv->name);
+				free(args);
+				pthread_mutex_unlock(&connlock);
+				return;
+			}
 		}
 	}
 	// subscribe to UUID
@@ -309,12 +332,50 @@ static void *notificationListener(void *vargp) {
 	return;
 }
 
+// read a single-byte UUID
+static long readByte(uuid_t *uuid, char *name) {
+	printf("reading %s\n", name);
+	gatt_connection_t *conn = get_connection();
+	pthread_mutex_lock(&connlock);
+	printf("still reading\n");
+	char data[100];
+	char out_buf[100];
+	memset(out_buf, 0, sizeof(out_buf));
+	size_t len = sizeof(data);
+	if (gattlib_read_char_by_uuid(conn, uuid, data, &len) == -1) {
+		printf("Read of uuid %s failed.\n", name);
+		pthread_mutex_unlock(&connlock);
+		return -1;
+	}
+	pthread_mutex_unlock(&connlock);
+	return data[0];
+}
+
 static long subscribeUUID(aSubRecord *pv) {
 	// create subscriber thread
-	uuid_t uuid = sensorTagUUID(pv->a);
+	int activate = 1;
+	uuid_t uuid;
+	if (strcmp(pv->a, BUTTON_UUID) == 0) {
+		activate = 0;
+		uuid_t button = CREATE_UUID16(0xffe1);
+		uuid = button;
+	}
+	else if (strcmp(pv->a, BATTERY_UUID) == 0) {
+		activate = 0;
+		uuid_t battery = CREATE_UUID16(0x2a19);
+		uuid = battery;
+
+		// read current battery level
+		// b/c notifications may be very infrequent
+		//int level = readByte(&uuid, pv->name);
+		//pv->vala = level;
+	}
+	else
+		uuid = sensorTagUUID(pv->a);
 	NotifyArgs *args = malloc(sizeof(NotifyArgs));
 	args->uuid = uuid;
 	args->pv = pv;
+	args->activate = activate;
 	strcpy(args->uuid_str, pv->a);
 	pthread_t thread_id;
 	pthread_create(&thread_id, NULL, &notificationListener, (void *)args);
@@ -322,52 +383,6 @@ static long subscribeUUID(aSubRecord *pv) {
 	return 0;
 }
 
-static long readUUID(aSubRecord *pv) {
-	gatt_connection_t *conn = get_connection();
-	uuid_t enable = sensorTagUUID("42");
-	//uuid_t enable = CREATE_UUID16(0x2902);
-	uint8_t values[1];
-	values[0] = 1;
-	int ret = gattlib_write_char_by_uuid(conn, &enable, values, sizeof(values));	
-
-	char input[40];
-	strcpy(input, pv->a);
-	//strcat(input, pv->b);
-	uuid_t uuid;
-	uuid = sensorTagUUID(input);
-	//gatt_connection_t *conn = get_connection();
-	//printf("input: %s\n", input);
-
-	int i;
-	char byte[4];
-	char data[100];
-	char out_buf[100];
-	memset(out_buf, 0, sizeof(out_buf));
-	size_t len = sizeof(data);
-	if (gattlib_read_char_by_uuid(conn, &uuid, data, &len) == -1) {
-		printf("Read of uuid %s (pv %s) failed.\n", input, pv->name);
-		return 1;
-	}
-	else {
-		if (strcmp(input, "018015") == 0) {
-			int level = data[0];
-			char buf[5];
-			snprintf(buf, sizeof(buf), "%d%%", level);
-			strncpy(pv->vala, buf, strlen(buf));
-		}
-		else {
-			for (i=0; i < len; i++) {
-				snprintf(byte, sizeof(byte), "%02x ", data[i]);
-				strcat(out_buf, byte);
-			}
-			printf("%s\n", out_buf);
-			strncpy(pv->vala, out_buf, strlen(out_buf));
-		}
-	}
-	return 0;
-}
-
 
 /* Register these symbols for use by IOC code: */
 epicsRegisterFunction(subscribeUUID);
-epicsRegisterFunction(readUUID);

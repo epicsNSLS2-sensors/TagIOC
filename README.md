@@ -5,7 +5,9 @@ Supported sensors:
 - Humidity-temperature
 - Pressure-temperature
 - Light
+- Accelerometer
+- Gyroscope
+- Magnetometer
+- Buttons
 - Preliminary support:
-	- Accelerometer
-	- Gyroscope
-	- Magnetometer
+	- Battery
