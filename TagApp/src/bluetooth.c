@@ -76,7 +76,7 @@ static gatt_connection_t *get_connection() {
 		return gatt_connection;
 	}
 	//printf("Connecting to device %s...\n", mac_address);
-	gatt_connection = gattlib_connect(NULL, mac_address, BDADDR_LE_PUBLIC, BT_SEC_LOW, 0, 0);
+	gatt_connection = gattlib_connect(NULL, mac_address, GATTLIB_CONNECTION_OPTIONS_LEGACY_BDADDR_LE_PUBLIC | GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_LOW);
 	signal(SIGINT, disconnect);
 	//pthread_mutex_unlock(&connlock);
 	//printf("Connected.\n");
@@ -126,7 +126,7 @@ static void writePV_callback(const uuid_t *uuidObject, const uint8_t *data, size
 			x = ((double)(int16_t)raw / 65536)*165 - 40;
 		}
 		else {
-			printf("Invaldi CHOICE for %s: %d\n", pv->name, choice);
+			printf("Invalid CHOICE for %s: %d\n", pv->name, choice);
 			return;
 		}
 	}
