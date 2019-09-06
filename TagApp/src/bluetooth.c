@@ -26,28 +26,23 @@
 #include "tag.h"
 
 // object for bluetooth connection to device
-gatt_connection_t *gatt_connection = 0;
-pthread_mutex_t connlock = PTHREAD_MUTEX_INITIALIZER;
+static gatt_connection_t *connection = 0;
+static pthread_mutex_t connlock = PTHREAD_MUTEX_INITIALIZER;
 
 // current 2-byte value of motion configuration UUID
-uint8_t motion_config[2];
-pthread_mutex_t motionlock = PTHREAD_MUTEX_INITIALIZER;
+static uint8_t motion_config[2];
+static pthread_mutex_t motionlock = PTHREAD_MUTEX_INITIALIZER;
 
-// period of motion sensor scanning in 10s of ms
-// minimum: 0x0A (100ms)
-// max: 0xFF (2.55s)
-#define MOTION_PERIOD 0x0A
 
-#define MOTION_PERIOD_UUID "83"
-
-#define TEMP_HUMIDITY_UUID "21"
-#define TEMP_PRESSURE_UUID "41"
-#define LIGHT_UUID "71"
-#define MOTION_UUID "81"
-#define BUTTON_UUID "-1"
-#define BATTERY_UUID "-2"
+// flag for starting reconnect thread and registering disconnect handler
+static int monitoring = 0;
+// flag to mark connection as broken
+static int broken_conn = 0;
+// flag to stop reconnect thread so we can disconnect
+static int stop = 0;
 
 static void disconnect();
+static void reconnect();
 
 // data for notification threads
 typedef struct {
@@ -65,40 +60,76 @@ typedef struct {
 
 NotificationNode *firstNode = 0;
 
+static void disconnect_handler() {
+	printf("WARNING: Connection to tag lost.\n");
+	broken_conn = 1;
+}
+
 // TODO: protect connection with lock without making everything hang
 static gatt_connection_t *get_connection() {
-	if (gatt_connection != 0) {
-		return gatt_connection;
+	if (connection != 0) {
+		return connection;
 	}
 	//pthread_mutex_lock(&connlock);
-	if (gatt_connection != 0) {
+	if (connection != 0) {
 		//pthread_mutex_unlock(&connlock);
-		return gatt_connection;
+		return connection;
 	}
 	//printf("Connecting to device %s...\n", mac_address);
-	gatt_connection = gattlib_connect(NULL, mac_address, GATTLIB_CONNECTION_OPTIONS_LEGACY_BDADDR_LE_PUBLIC | GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_LOW);
+	connection = gattlib_connect(NULL, mac_address, GATTLIB_CONNECTION_OPTIONS_LEGACY_BDADDR_LE_PUBLIC | GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_LOW);
 	signal(SIGINT, disconnect);
+
+	if (monitoring == 0) {
+		gattlib_register_on_disconnect(connection, disconnect_handler, NULL);
+		printf("Starting reconnection thread...\n");
+		pthread_t necromancer;
+		pthread_create(&necromancer, NULL, &reconnect, NULL);
+		monitoring = 1;
+	}
 	//pthread_mutex_unlock(&connlock);
 	//printf("Connected.\n");
-	return gatt_connection;
+	return connection;
+}
+
+// thread function to attempt to reconnect to tag
+static void reconnect() {
+	int i;
+	while(1) {
+		if (broken_conn) {
+			printf("reconnect: Attempting reconnection to tag...\n");
+			connection = 0;
+			get_connection();
+			if (connection != 0)
+				broken_conn = 0;
+		}
+		if (stop) {
+			printf("Reconnect thread stopped\n");
+			stop = 0;
+			return;
+		}
+		sleep(RECONNECT_DELAY);
+	}
 }
 
 static void disconnect() {
-	gatt_connection_t *conn = gatt_connection;
+	// wait for reconnect thread to stop
+	stop = 1;
+	while (stop != 0)
+		sleep(1);
 	printf("Stopping notifications...\n");
 	if (firstNode != 0) {
 		NotificationNode *curr = firstNode; 
 		NotificationNode *next;
 		while (curr->next != 0) {
 			next = curr->next;
-			gattlib_notification_stop(conn, curr->uuid);
+			gattlib_notification_stop(connection, curr->uuid);
 			free(curr);
 			curr = next;
 		}
-		gattlib_notification_stop(conn, curr->uuid);
+		gattlib_notification_stop(connection, curr->uuid);
 		free(curr);
 	}
-	gattlib_disconnect(conn);
+	gattlib_disconnect(connection);
 	printf("Disconnected from device.\n");
 	exit(1);
 }
@@ -330,25 +361,6 @@ static void *notificationListener(void *vargp) {
 	g_main_loop_run(loop);
 	printf("ERROR: pv %s thread exited\n", args->pv->name);
 	return;
-}
-
-// read a single-byte UUID
-static long readByte(uuid_t *uuid, char *name) {
-	printf("reading %s\n", name);
-	gatt_connection_t *conn = get_connection();
-	pthread_mutex_lock(&connlock);
-	printf("still reading\n");
-	char data[100];
-	char out_buf[100];
-	memset(out_buf, 0, sizeof(out_buf));
-	size_t len = sizeof(data);
-	if (gattlib_read_char_by_uuid(conn, uuid, data, &len) == -1) {
-		printf("Read of uuid %s failed.\n", name);
-		pthread_mutex_unlock(&connlock);
-		return -1;
-	}
-	pthread_mutex_unlock(&connlock);
-	return data[0];
 }
 
 static long subscribeUUID(aSubRecord *pv) {
